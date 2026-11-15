@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: WordSpeak Core API contract
-  version: 0.1.0
+  version: 0.3.0
   description: Hợp đồng giữa frontend, backend và ai-service. Sửa file này trước khi
     đổi API.
 paths:
@@ -26,7 +26,8 @@ paths:
                     - unavailable
   /assess:
     post:
-      summary: (ai-service) Chấm phát âm
+      summary: Legacy scoring interface; validated scoring is not implemented
+      deprecated: true
       requestBody:
         required: true
         content:
@@ -43,12 +44,9 @@ paths:
                 text:
                   type: string
       responses:
-        '200':
-          description: Điểm theo âm vị, từ, câu
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Assessment'
+        '501':
+          description: No fabricated pronunciation score; use the experimental /demo/analyze
+            endpoint
   /auth/register:
     post:
       summary: Đăng ký tài khoản và lấy JWT
@@ -356,6 +354,143 @@ paths:
         required: true
         schema:
           type: integer
+  /demo:
+    get:
+      summary: (ai-service) Experimental pronunciation demo page
+      responses:
+        '200':
+          description: Local recording, upload and reference-guide interface
+          content:
+            text/html:
+              schema:
+                type: string
+  /demo/config:
+    get:
+      summary: Supported short-word prompts and generic articulation guides
+      responses:
+        '200':
+          description: Demo configuration including original guided-practice lessons,
+            four physical controls, teaching-example poses and source links; guide
+            poses are not measured mouth positions
+          content:
+            application/json:
+              schema:
+                type: object
+  /demo/analyze:
+    post:
+      summary: Experimental live phoneme preview, without a pronunciation score
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - audio
+              - prompt_id
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: 16 kHz mono PCM-16 WAV, 0.25 to 4 seconds; a complete
+                    target word with short surrounding context is recommended
+                prompt_id:
+                  type: string
+                  enum:
+                  - seat
+                  - sit
+                  - bed
+                  - bad
+                  - food
+                  - pen
+                  - ten
+                  - key
+                  - see
+                  - she
+                  - zoo
+                  - shows
+                  - two
+                  - put
+                  - can
+                input_scope:
+                  type: string
+                  enum:
+                  - word
+                  - context
+                  default: context
+                  description: Word mode locates one vowel nucleus or the initial
+                    consonant in an isolated word; context preserves strict surrounding-phone
+                    anchors. The page defaults to word mode.
+      responses:
+        '200':
+          description: Provisional sound preview or uncertain result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhonemePreview'
+        '400':
+          description: Unsupported prompt or invalid audio
+        '413':
+          description: Upload too large
+        '503':
+          description: Local acoustic model is unavailable
+  /demo/examples/{example_id}:
+    get:
+      summary: Replay a cached development investigation, without fresh inference
+      parameters:
+      - in: path
+        name: example_id
+        required: true
+        schema:
+          type: string
+          enum:
+          - comparison
+          - shows
+          - mistakes
+          - improvements
+      responses:
+        '200':
+          description: Cached model output and teacher feedback with uncertainty flags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhonemePreview'
+        '404':
+          description: Example or local investigation files not available
+  /demo/examples/{example_id}/audio:
+    get:
+      summary: Audio for a whitelisted local development example
+      parameters:
+      - in: path
+        name: example_id
+        required: true
+        schema:
+          type: string
+          enum:
+          - comparison
+          - shows
+          - mistakes
+          - improvements
+      responses:
+        '200':
+          description: WAV candidate passage with neighboring context
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Example audio unavailable
+  /demo/status:
+    get:
+      summary: Local model loading and inference state; no background training
+      responses:
+        '200':
+          description: Current model readiness and request state
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   securitySchemes:
     BearerAuth:
@@ -460,3 +595,64 @@ components:
           items:
             type: object
             additionalProperties: true
+    PhonemePreview:
+      type: object
+      required:
+      - mode
+      - status
+      - target_phone
+      - predicted_phone
+      - raw_phones
+      - message
+      - reasons
+      - score
+      properties:
+        mode:
+          type: string
+          enum:
+          - live_audio
+          - cached_development_example
+        status:
+          type: string
+          enum:
+          - model_match
+          - possible_difference
+          - uncertain
+        target_phone:
+          type: string
+        predicted_phone:
+          type: string
+          nullable: true
+        raw_phones:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        score:
+          type: number
+          nullable: true
+          description: Always null in this experimental preview
+        audio_url:
+          type: string
+          nullable: true
+        teacher_feedback:
+          type: string
+          nullable: true
+        practice_cue:
+          type: string
+          nullable: true
+          description: Comparison of generic reference categories; not a measurement
+            of learner anatomy
+        articulation_feedback:
+          type: object
+          nullable: true
+          description: Observed sound-category hypothesis, target reference, named
+            feature differences and practice adjustments. Never measured learner geometry
+            or a percentage severity score.
+        details:
+          type: object
